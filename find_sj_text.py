@@ -152,6 +152,16 @@ class c_text_finder:
             pass
 
     @staticmethod
+    def count_bytes(s):
+        n = 0
+        for c in s:
+            if len(c.encode('utf-8')) > 1:
+                n += 2
+            else:
+                n += 1
+        return n
+
+    @staticmethod
     def valid_trans(txt_itm, chk_at = True):
         if not txt_itm['trans']:
             return None, None
@@ -160,8 +170,8 @@ class c_text_finder:
         if chk_at and (src[-1] == '@') != (
             trans[-1] == '@'):
             raise ValueError('missed @ symbol')
-        slen = len(src.encode('utf-8'))
-        dlen = len(trans.encode('utf-8'))
+        slen = c_text_finder.count_bytes(src)
+        dlen = c_text_finder.count_bytes(trans)
         if slen + txt_itm['info'][2] - 1 < dlen:
             raise ValueError('trans too long')
         elif dlen < slen:

@@ -1,0 +1,166 @@
+<html>
+<head>
+<script type="text/javascript" src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/js-base64@3.6.0/base64.min.js"></script>
+<script type="text/javascript">
+
+function draw_text(ctx, x, y, text, font, align, baseline, stroke) {
+	if(!font) font = '20px Arial';
+	if(!align) align = 'left';
+	if(!baseline) baseline = 'top';
+	ctx.save();
+	ctx.font = font;
+	ctx.textAlign = align;
+	ctx.textBaseline = baseline;
+	if(!stroke)
+		ctx.fillText(text, x, y);
+	else
+		ctx.strokeText(text, x, y);
+	var txt_width =  Math.ceil(ctx.measureText(text).width);
+	var _fs = font.split(' '), i = 0;
+	while(_fs[i++].slice(-2) != 'px');
+	var txt_height = parseInt(_fs[i-1].split('px')[0]) * 2;
+	ctx.restore();
+	return [txt_width, txt_height];
+}
+
+function get_data(ctx, x, y, w, h) {
+	var rslt = {};
+	var src = ctx.getImageData(x, y, w, h).data;
+	for(var j = 0; j < h; j++) {
+		for(var i = 0; i < w; i++) {
+			var pd = src[(j * w + i) * 4 + 3];
+            var v = 0;
+			/*if(pd > 63) {
+				v = Math.floor(pd / 64);
+			}*/
+            if(pd > 100) {
+                v = Math.min(2, Math.floor(pd / 100));
+            }
+            /*if(pd > 70) {
+                v = Math.min(3, Math.floor(pd / 70));
+            }*/
+            if(v) {
+                if(!(j in rslt)) rslt[j] = {};
+				rslt[j][i] = v;
+            }
+		}
+	}
+	return rslt;
+}
+
+function clear_rect(ctx, x, y, w, h) {
+	ctx.clearRect(x, y, w, h);
+}
+
+function draw_boxes(ctx, x, y, tw, th, l) {
+    ctx.save();
+    for(let i = 0; i < l; i++) {
+        ctx.strokeRect(x + tw * i, y, tw, th);
+    }
+    ctx.restore();
+}
+
+function draw_lines_y(ctx, y) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(800, y);
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.restore();
+}
+
+function draw_lines_x(ctx, x) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, 600);
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.restore();
+}
+
+function text_raw_data(ctx, txt, fsz = 16) {
+    ctx.save();
+    //ctx.scale(0.5, 1);
+    //draw_boxes(ctx, 0, 0, fsz, fsz, 3);
+    //draw_lines_y(ctx, fsz);
+    //draw_lines_x(ctx, fsz*3);
+    //draw_lines_x(ctx, fsz*4);
+	//var sz = draw_text(ctx, 0, 1, txt, 'bold ' + fsz+'px "Microsoft YaHei"', 'start', 'top');
+	var sz = draw_text(ctx, 0, 0, txt, fsz+'px SimHei', 'start', 'top');
+    var dt = get_data(ctx, 0, 0, sz[0], sz[1]);
+    ctx.restore();
+    draw_back(ctx, dt, 0, 50, sz[0], sz[1]);
+    return dt;
+}
+
+function draw_back(ctx, raw, ox, oy, w, h) {
+    var ddat = ctx.createImageData(w, h);
+    for(let x = 0; x < w; x++) {
+        for(let y = 0; y < h; y++) {
+            var idx = (y * w + x) * 4;
+            var v = Math.max(255 - (raw[y]?.[x] ?? 0) * 85, 0);
+            ddat.data[idx] = v;
+            ddat.data[idx + 1] = v;
+            ddat.data[idx + 2] = v;
+            ddat.data[idx + 3] = 255;
+        }
+    }
+    ctx.putImageData(ddat, ox, oy);
+}
+
+function calc_charset(raw, l, w = /*8*/16, h = 15, rev = false) {
+    let bi = 0;
+    let bv = 0;
+    let rb = '';
+    let rs = [];
+    for(let idx = 0; idx < l; idx ++) {
+        for(let y = 0; y < h; y ++) {
+            //for(let x = 0; x < w; x ++) {
+            for(let x = 0; x < w; x += 2) {
+                rx = idx * w + x;
+                //let v = (raw[y]?.[rx] ?? 0);
+                let v1 = (raw[y]?.[rx] ?? 0);
+                let v2 = (raw[y]?.[rx + 1] ?? 0);
+                //let v = Math.floor((v1 + v2 + 1) / 2);
+                let v = Math.min(v1 + v2, 3);
+                if(rev) {
+                    bv += (v << (bi * 2));
+                } else {
+                    bv = (bv << 2) + v;
+                }
+                bi += 1
+                if(bi >= 4) {
+                    rb = rb + String.fromCharCode(bv);
+                    rs.push(bv);
+                    bi = 0;
+                    bv = 0;
+                }
+            }
+        }
+    }
+    return [Base64.encode(rb), rs];
+}
+
+$(document).ready(function() {
+	var ctx = $('canvas')[0].getContext('2d');
+    var txt = '你好吗！还好。';
+    var dt = text_raw_data(ctx, txt);
+    window.dt = dt;
+    let [cs, csv] = calc_charset(dt, txt.length);
+    window.cs = cs;
+    window.csv = csv.map(v=>('00' + v.toString(16)).slice(-2)).join(' ');
+	//document.write(JSON.stringify(dt));
+	//document.close();
+});
+
+</script>
+</head>
+<body>
+<div>
+<canvas width = '800' height = '600' />
+</div>
+</body>
+</html>

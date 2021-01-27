@@ -119,7 +119,7 @@ class c_charset:
 
     def get_idx_by_code(self, c, rs = True):
         idx = self.mapper.map(*c)
-        if not idx and rs:
+        if idx is None and rs:
             raise ValueError('invalid char')
         return idx
 

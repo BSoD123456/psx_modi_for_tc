@@ -173,6 +173,7 @@ class c_charset_filler:
             self.cur_idx = self.dst_set.get_idx_by_code(self.st_char)
         except:
             raise ValueError('invalid start char: ' + start_char)
+        self.start_idx = self.cur_idx
         self.map = {}
 
     def emit(self, char):
@@ -186,7 +187,7 @@ class c_charset_filler:
         except:
             pass
         else:
-            if idx < self.cur_idx:
+            if idx < self.start_idx:
                 self.map[char] = {
                     'code': cc,
                     'num': 1,

@@ -109,7 +109,8 @@ if __name__ == '__main__':
                     continue
                 tim_imported = True
                 with open(tsavp(fn), 'rb') as fd:
-                    data_scanner.import_file(fn, fd.read())
+                    if not data_scanner.import_file(fn, fd.read()):
+                        raise RuntimeError('invalid tim file: ' + fn)
             if tim_imported:
                 c_text_tab.touch_timestamp(savp(tim_timestamp))
         
@@ -121,7 +122,7 @@ if __name__ == '__main__':
             if not os.path.exists(outp(cfg['DEFAULT']['modios_file'])):
                 raise RuntimeError('iso modify failed')
         
-        return data_scanner
+        return text_tab
     
     try:
         text_tab = main()

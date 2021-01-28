@@ -301,7 +301,7 @@ class c_tim_scanner:
             lraw = len(raw)
             if fi['offset'] == ofs:
                 if fi['size'] > lraw:
-                    raw += b'\00' * lraw
+                    raw += b'\00' * (fi['size'] - lraw)
                 elif fi['size'] < lraw:
                     print('file too big: ' + str(lraw) + '/' + str(fi['size']))
                     return False

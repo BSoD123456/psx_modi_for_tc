@@ -248,27 +248,72 @@ class c_tim_scanner:
             self.scan()
             self.save_scan(sav_fn)
 
-    def save_files(self, ext_dir, force = False):
+    def save_files(self, ext_dir, force = False, target = []):
         if not os.path.exists(ext_dir):
             os.makedirs(ext_dir)
         fn_patt = '{:08x}_{:s}.{:s}'
-        print('saving tim filse ...')
-        for fi in self.tim_files:
-            fn = os.path.join(
-                ext_dir, fn_patt.format(fi['offset'], fi['ukint'], 'tim'))
-            if not force and os.path.exists(fn):
-                continue
-            with open(fn, 'wb') as fd:
-                fd.write(self.raw[fi['offset']:fi['offset']+fi['size']])
-        print('saving unknown filse ...')
-        for fi in self.unknown_files:
-            fn = os.path.join(
-                ext_dir, fn_patt.format(fi['offset'], fi['ukint'], 'uk'))
-            if not force and os.path.exists(fn):
-                continue
-            with open(fn, 'wb') as fd:
-                fd.write(self.raw[fi['offset']:fi['offset']+fi['size']])
-        print('done')
+        saved = False
+        if not target or 'tim' in target:
+            saving_dialog = 'saving tim filse ...'
+            for fi in self.tim_files:
+                fn = os.path.join(
+                    ext_dir, fn_patt.format(fi['offset'], fi['ukint'], 'tim'))
+                if not force and os.path.exists(fn):
+                    continue
+                if saving_dialog:
+                    print(saving_dialog)
+                    saving_dialog = None
+                    saved = True
+                with open(fn, 'wb') as fd:
+                    fd.write(self.raw[fi['offset']:fi['offset']+fi['size']])
+        if not target or 'ext' in target:
+            saving_dialog = 'saving unknown filse ...'
+            for fi in self.unknown_files:
+                fn = os.path.join(
+                    ext_dir, fn_patt.format(fi['offset'], fi['ukint'], 'uk'))
+                if not force and os.path.exists(fn):
+                    continue
+                if saving_dialog:
+                    print(saving_dialog)
+                    saving_dialog = None
+                    saved = True
+                with open(fn, 'wb') as fd:
+                    fd.write(self.raw[fi['offset']:fi['offset']+fi['size']])
+        if saved:
+            print('done')
+
+    def import_file(self, fname, raw):
+        try:
+            tag, typ = fname.split('.')
+            ofs, ukint = tag.split('_')
+            ofs = int(ofs, 16)
+        except:
+            print('invalid file name: ' + fname)
+            return False
+        if typ == 'tim':
+            flist = self.tim_files
+        elif ename == 'uk':
+            typ = self.unknown_files
+        else:
+            print('invalid file type: ' + typ)
+            return False
+        for fi in flist:
+            lraw = len(raw)
+            if fi['offset'] == ofs:
+                if fi['size'] > lraw:
+                    raw += b'\00' * lraw
+                elif fi['size'] < lraw:
+                    print('file too big: ' + str(lraw) + '/' + str(fi['size']))
+                    return False
+                break
+            elif fi['offset'] > ofs:
+                print('invalid offset: ' + hex(ofs))
+                return False
+        else:
+            print('invalid offset: ' + hex(ofs))
+            return False
+        self.raw = self.raw[:ofs] + raw + self.raw[ofs+len(raw):]
+        return True
 
 if __name__ == '__main__':
     

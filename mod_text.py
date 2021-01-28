@@ -101,29 +101,36 @@ class c_text_tab:
                 pass
         except:
             pass
-        
-    def check_timestamp(self, stmp_fn):
-        if not (stmp_fn and self.texts_fname and
-                os.path.exists(self.texts_fname)):
+
+    @staticmethod
+    def check_timestamp(dst_fn, stmp_fn, touch = True):
+        if not (stmp_fn and dst_fn and
+                os.path.exists(dst_fn)):
             return False
-        ts_t = os.path.getmtime(self.texts_fname)
+        ts_t = os.path.getmtime(dst_fn)
         if os.path.exists(stmp_fn):
             ts_s = os.path.getmtime(stmp_fn)
         else:
             ts_s = 0
         if ts_t > ts_s:
-            self.touch_timestamp(stmp_fn)
+            if touch:
+                c_text_tab.touch_timestamp(stmp_fn)
             return True
         return False
 
-    def write_files(self, fn_prefix, stamp = None):
+    def write_files(self, fn_prefix, stamp = None, force = False):
         if not self.import_done:
             self.import_texts()
-        if stamp and not self.check_timestamp(stamp):
-            return False
-        if not self.modified:
+        if stamp:
+            if force:
+                self.touch_timestamp(stamp)
+            elif not self.check_timestamp(self.texts_fname, stamp):
+                return False
+        if not force and not self.modified:
             return False
         for tag, raw in self.srclist.items():
+            if not isinstance(raw, bytes):
+                raw = raw.raw
             with open(fn_prefix + tag, 'wb') as fd:
                 fd.write(raw)
         return True

@@ -56,7 +56,7 @@ class c_tim_scanner:
 
     def valid_flags(self, fval):
         return ((fval & (0x100000000 - 0xc)) == 0 and
-                fval != 0 and fval != 10 and fval != 11 and fval != 12)
+                fval != 10 and fval != 11 and fval != 12)
 
     def goto_next_sector(self):
         self.pos = (

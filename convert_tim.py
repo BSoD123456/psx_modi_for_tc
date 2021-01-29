@@ -209,11 +209,12 @@ class c_tim_converter:
 
     def set_rgba(self, x, y, rgba):
         if self.has_clut:
-            v = self.get_value_by_rgba(rgba, 2)
-            if v in self.clut_rev:
-                v = self.clut_rev[v]
+            vi = self.get_value_by_rgba(rgba, 2)
+            if vi in self.clut_rev:
+                v = self.clut_rev[vi]
             else:
                 v = self.find_clut_value(rgba)
+                self.clut_rev[vi] = v
         else:
             v = self.get_value_by_rgba(rgba)
         self.set_body_value(x, y, v)

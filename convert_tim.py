@@ -230,8 +230,15 @@ class c_tim_converter:
             mode = 'RGBA', size = (self.width, self.height))
         px = self.image.load()
         for rgba, x, y in self.iter_rgba():
-            alpha = 0 if rgba[3] else 255
-            px[x, y] = (rgba[0], rgba[1], rgba[2], alpha)
+            rgb = rgba[:3]
+            if rgba[3]:
+                if rgb == (0, 0, 0):
+                    alpha = 0
+                else:
+                    alpha = 128
+            else:
+                alpha = 255
+            px[x, y] = (rgb[0], rgb[1], rgb[2], alpha)
 
     def import_raw(self):
         img_dat = self.body.buffer()
@@ -244,11 +251,17 @@ class c_tim_converter:
         for y in range(self.image.height):
             for x in range(self.image.width):
                 rgba = px[x, y]
-                stp = (rgba[3] < 128)
-                if stp:
-                    rgb = (0, 0, 0)
-                else:
+                alpha = rgba[3]
+                if alpha > 200:
+                    stp = False
                     rgb = rgba[:3]
+                elif alpha > 60:
+                    stp = True
+                    rgb = rgba[:3]
+                else:
+                    stp = True
+                    rgb = (0, 0, 0)
+                stp = (rgba[3] < 128)
                 self.set_rgba(x, y,
                     (rgb[0], rgb[1], rgb[2], stp))
         self.import_raw()

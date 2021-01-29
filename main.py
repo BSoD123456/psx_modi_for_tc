@@ -88,6 +88,7 @@ if __name__ == '__main__':
         text_tab.load_texts(savp(text_sav))
 
         tim_imported = False
+        use_mod_data = False
         if cfg['TIM']['enable'] != 'off':
             tim_ext_path = os.path.join(
                 cfg['DEFAULT']['ext_path'], cfg['TIM']['tim_path'])
@@ -183,11 +184,21 @@ if __name__ == '__main__':
                     if not data_scanner.import_file(fn, fd.read()):
                         raise RuntimeError('invalid tim file: ' + fn)
             if tim_imported:
+                print('tim imported')
                 c_text_tab.touch_timestamp(savp(tim_timestamp))
+            else:
+                mod_data_fn = extractor.get_path(
+                    'mod', cfg['DEFAULT']['data_file'])
+                if os.path.exists(mod_data_fn):
+                    with open(mod_data_fn, 'rb') as fd:
+                        data_scanner.raw = fd.read()
+                    use_mod_data = True
         
         text_timestamp = 'timestamp'
         if text_tab.write_files(extractor.get_path('mod'),
                                 savp(text_timestamp), tim_imported):
+            if use_mod_data:
+                print('use old ' + cfg['DEFAULT']['data_file'])
             text_tab.filler.save_set(outp(cfg['DEFAULT']['modbios_file']))
             extractor.modify(outp(cfg['DEFAULT']['modios_file']))
             if not os.path.exists(outp(cfg['DEFAULT']['modios_file'])):

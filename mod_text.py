@@ -11,6 +11,8 @@ from mod_charset import std_filler
 
 class c_text_tab:
 
+    VERSION = 1.0
+
     def __init__(self, srcs):
         self.texts = []
         self.filler = std_filler()
@@ -81,17 +83,105 @@ class c_text_tab:
         else:
             texts_fn = self.texts_fname
         with open(texts_fn, 'w', encoding='utf-8') as fd:
-            json.dump(self.texts, fd, ensure_ascii = False)
+            json.dump({
+                'meta': {'version': self.VERSION},
+                'texts': self.texts,
+            }, fd, ensure_ascii = False)
         
     def load_texts(self, texts_fn):
         self.texts_fname = texts_fn
         try:
             with open(texts_fn, 'r', encoding='utf-8') as fd:
                 self.texts = json.load(fd)
-            self.scan_done = True
         except:
             self.scan()
             self.save_texts()
+        else:
+            if not (isinstance(self.texts, dict) and
+                    'meta' in self.texts and
+                    'version' in self.texts['meta'] and
+                    self.texts['meta']['version'] >= self.VERSION):
+                old_texts = self.texts
+                self.texts = []
+                self.scan()
+                self.update_old_texts(old_texts)
+                self.save_texts()
+            else:
+                self.texts = self.texts['texts']
+            self.scan_done = True
+
+    def update_old_texts(self, old_texts):
+        print('update old texts to version', str(self.VERSION))
+        if (isinstance(self.texts, dict) and            
+            'texts' in self.texts):
+            old_texts = old_texts['texts']
+        now_texts = self.texts
+        merge_texts = []
+        n_s_idx = 0
+        o_s_idx = 0
+        while n_s_idx < len(now_texts) or o_s_idx < len(old_texts):
+            try:
+                n_sec = now_texts[n_s_idx]
+            except:
+                n_sec = (None, None)
+            try:
+                o_sec = old_texts[o_s_idx]
+            except:
+                o_sec = (None, None)
+            if n_sec[0] == o_sec[0]:
+                tag = n_sec[0]
+                n_itms = n_sec[1]
+                o_itms = o_sec[1]
+                n_s_idx += 1
+                o_s_idx += 1
+                n_t_idx = 0
+                o_t_idx = 0
+                m_itms = []
+                while n_t_idx < len(n_itms) or o_t_idx < len(o_itms):
+                    empty_ti = {
+                        'text': None,
+                        'info': [float('inf'), 0, 0],
+                    }
+                    try:
+                        n_ti = n_itms[n_t_idx]
+                    except:
+                        n_ti = empty_ti
+                    try:
+                        o_ti = o_itms[o_t_idx]
+                    except:
+                        o_ti = empty_ti
+                    n_ofs = n_ti['info'][0]
+                    o_ofs = o_ti['info'][0]
+                    ofs_dist = abs(n_ofs - o_ofs)
+                    if ofs_dist < 3:
+                        trans = o_ti['trans']
+                        if trans:
+                            if ofs_dist > 0:
+                                trans = '*need update*' + trans
+                            n_ti['trans'] = trans
+                        m_itms.append(n_ti)
+                        n_t_idx += 1
+                        o_t_idx += 1
+                    elif n_ofs < o_ofs:
+                        m_itms.append(n_ti)
+                        n_t_idx += 1
+                    elif n_ofs > o_ofs:
+                        o_ti['trans'] = '*no longer exist*' + o_ti['trans']
+                        o_itms.append(o_ti)
+                        o_t_idx += 1
+                merge_texts.append((tag, m_itms))
+            else:
+                has_n = (n_sec[0] in (s[0] for s in old_texts[o_s_idx:]))
+                has_o = (o_sec[0] in (s[0] for s in now_texts[n_s_idx:]))
+                if has_n and has_o:
+                    raise ValueError('invalid texts sect order')
+                if not has_n:
+                    merge_texts.append(n_sec)
+                    n_s_idx += 1
+                if not has_o:
+                    merge_texts.append(o_sec)
+                    o_s_idx += 1
+        self.texts = merge_texts
 
     @staticmethod
     def touch_timestamp(stmp_fn):

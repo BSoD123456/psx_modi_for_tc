@@ -13,6 +13,10 @@ PS游戏Tail Concerto汉化工具集。
 - 如果要使用tim图片相关功能，将config.txt中TIM页下的enable项设置为on（默认为off）。
 - - 之后运行 main.py 即可导出tim文件至ext路径下的tim文件夹内。
 - - 将修改过的tim文件放入sav路径下的tim文件夹内，再次运行 main.py 即可导回tim文件。
+- 如果要使用tim与png图片转换功能，将config.txt中TIMCONV页下的enable项设置为on（默认为off）。
+- - 之后运行 main.py 即可将所有导出的tim格式转换为png格式，保存至ext路径的png文件夹内。第一次运行时间会很长。
+- - 修改png图片时，注意尽量使用原图中已有的颜色。如果原图格式中使用了色板，而修改图又使用了原图没有的颜色，转换程序就会自动匹配已有的最接近颜色，继而可能导致色偏，还会使转换速度大幅下降。
+- - 将修改过的png文件放入sav路径下的png文件夹内，再次运行 main.py 即可转换回tim文件并自动导入。
 - 再次运行 main.py 即可导回文本。输出文件会被保存在out文件夹（默认table/out）下，包括修改后的rom和修改后的BIOS文件。
 - 使用修改版的rom时，必须要搭配修改版的BIOS文件一起使用，否则会显示乱码。
 ## 声明

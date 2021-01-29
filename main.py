@@ -39,6 +39,12 @@ if __name__ == '__main__':
                     'enable': 'off',
                     'tim_path': r'tim',}})
             drity = True
+        if not 'TIMCONV' in cfg:
+            cfg.update({
+                'TIMCONV': {
+                    'enable': 'off',
+                    'png_path': r'png',}})
+            drity = True
         if drity:
             with open(cfg_file, 'w') as fd:
                 cfg.write(fd)
@@ -95,6 +101,71 @@ if __name__ == '__main__':
             tsavp = lambda p: os.path.join(tim_sav_path, p)
             
             data_scanner.save_files(tim_ext_path, target = ['tim'])
+
+            if cfg['TIMCONV']['enable'] != 'off':
+                
+                from convert_tim import c_tim_converter
+                
+                png_ext_path = os.path.join(
+                    cfg['DEFAULT']['ext_path'], cfg['TIMCONV']['png_path'])
+                if not os.path.exists(png_ext_path):
+                    os.makedirs(png_ext_path)
+                pextp = lambda p: os.path.join(png_ext_path, p)
+                png_sav_path = os.path.join(
+                    cfg['DEFAULT']['sav_path'], cfg['TIMCONV']['png_path'])
+                if not os.path.exists(png_sav_path):
+                    os.makedirs(png_sav_path)
+                psavp = lambda p: os.path.join(png_sav_path, p)
+
+                timconv_tab = {}
+                def get_timconv(tag):
+                    if tag in timconv_tab:
+                        tc = timconv_tab[tag]
+                    else:
+                        fn = textp(tag + '.tim')
+                        if not os.path.exists(fn):
+                            return None
+                        try:
+                            with open(fn, 'rb') as fd:
+                                tc = c_tim_converter(fd.read())
+                        except ValueError as e:
+                            if e.args[0] == 'empty body':
+                                return None
+                            raise
+                        timconv_tab[tag] = tc
+                    return tc
+                
+                for fn in os.listdir(tim_ext_path):
+                    tag = fn.split('.')[0]
+                    if fn.split('.')[-1] != 'tim':
+                        continue
+                    pfn = tag + '.png'
+                    if not os.path.exists(pextp(pfn)):
+                        timconv = get_timconv(tag)
+                        if not timconv:
+                            continue
+                        print('convert to png: ' + tag)
+                        timconv.save_png(pextp(pfn))
+
+                for fn in os.listdir(png_sav_path):
+                    tag = fn.split('.')[0]
+                    if fn.split('.')[-1] != 'png':
+                        continue
+                    tfn = tag + '.tim'
+                    need_conv = True
+                    if os.path.exists(tsavp(tfn)):
+                        ts_t = os.path.getmtime(tsavp(tfn))
+                        ts_p = os.path.getmtime(psavp(fn))
+                        if ts_t >= ts_p:
+                            need_conv = False
+                    if need_conv:
+                        timconv = get_timconv(tag)
+                        if not timconv:
+                            continue
+                        print('convert to tim: ' + tag)
+                        timconv.load_png(psavp(fn))
+                        with open(tsavp(tfn), 'wb') as fd:
+                            fd.write(timconv.raw)
 
             tim_timestamp = 'tim_timestamp'
             for fn in os.listdir(tim_sav_path):

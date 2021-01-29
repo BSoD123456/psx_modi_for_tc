@@ -38,8 +38,10 @@ class c_tim_converter:
         hlen = hd['length'].value - len(hd)
         hw = hd['width'].value
         hh = hd['height'].value
-        if not hlen == hw * hh * 2 or hlen == 0:
+        if not hlen == hw * hh * 2:
             raise ValueError('invalid body header')
+        elif hlen == 0:
+            raise ValueError('empty body')
         body_desc = sp.desc_arr(
             hh, sp.desc_arr(hw, sp.desc_uword))
         if bofs:
@@ -93,6 +95,8 @@ class c_tim_converter:
         self.body = sp.data_pack(body_desc, self.body.buffer())
 
     def parse_body_clut(self):
+        if not self.has_clut:
+            return
         body_desc = sp.desc_arr(int(len(self.clut) / 2), sp.desc_uword)
         self.clut = sp.data_pack(body_desc, self.clut.buffer())
         self.clut = [i.value for i in self.clut]

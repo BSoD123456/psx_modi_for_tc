@@ -244,8 +244,13 @@ class c_tim_converter:
         for y in range(self.image.height):
             for x in range(self.image.width):
                 rgba = px[x, y]
+                stp = (rgba[3] < 128)
+                if stp:
+                    rgb = (0, 0, 0)
+                else:
+                    rgb = rgba[:3]
                 self.set_rgba(x, y,
-                    (rgba[0], rgba[1], rgba[2], rgba[3] < 128))
+                    (rgb[0], rgb[1], rgb[2], stp))
         self.import_raw()
 
     def save_png(self, png_fn):

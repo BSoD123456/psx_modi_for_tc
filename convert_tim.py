@@ -252,7 +252,7 @@ class c_tim_converter:
         self.image.save(png_fn, 'png')
 
     def load_png(self, png_fn):
-        self.image = Image.open(png_fn)
+        self.image = Image.open(png_fn).convert('RGBA')
         self.import_image()
     
 if __name__ == '__main__':

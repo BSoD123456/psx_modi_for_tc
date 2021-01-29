@@ -11,6 +11,13 @@ def valid_shift_jis_val(v):
 def valid_ctr_sym_val(v):
     return v.isdigit() or v == b'@'
 
+def valid_ctr_sym_in_string(s):
+    for c in s:
+        ec = c.encode('utf-8')
+        if len(ec) == 1 and not (c.isdigit() or c == '@'):
+            return False
+    return True
+
 def invalid_spec_text(s, p):
     if len(s) - p != 4:
         return False
@@ -195,6 +202,8 @@ class c_text_finder:
             raise ValueError('missed @ symbol')
         slen = c_text_finder.count_bytes(src)
         dlen = c_text_finder.count_bytes(trans)
+        if not valid_ctr_sym_in_string(trans):
+            raise ValueError('invalid symbol in trans')
         if slen + txt_itm['info'][2] - 1 < dlen:
             raise ValueError('trans too long')
         elif dlen < slen:

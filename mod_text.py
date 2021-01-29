@@ -60,8 +60,9 @@ class c_text_tab:
                         continue
                     encode_trans = b''
                     for c in txt_trans:
-                        if c in ['@', '\00']:
-                            encode_trans += c.encode('utf-8')
+                        ec = c.encode('utf-8')
+                        if len(ec) == 1:
+                            encode_trans += ec
                             continue
                         encode_trans += self.filler.emit(c)
                 except Exception as e:

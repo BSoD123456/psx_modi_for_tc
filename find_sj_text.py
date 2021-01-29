@@ -1,103 +1,126 @@
 #! python3
 # coding: utf-8
 
-#[0x40~0xfc]
-shift_jis_valid_page = [
-    [0x81, 0, 0],
-    [0x82, 0x4f, 0xf2],
-    [0x83, 0, 0xd6],
-    [0x84, 0, 0xbe],
-    [0x88, 0x9f, 0],
-    (0x89, 0x98),
-    [0x98, 0, 0x73],
-]
-def _complete_sjvp(tab):
-    lopage = [0x40, 0xfd]
-    rtab = []
-    for itm in tab:
-        if isinstance(itm, tuple):
-            for i in range(itm[0], itm[1]):
-                rtab.append([i, *lopage])
-        else:
-            if not itm[1]:
-                itm[1] = lopage[0]
-            if not itm[2]:
-                itm[2] = lopage[1]
-            rtab.append(itm)
-    return rtab
-shift_jis_valid_page = _complete_sjvp(shift_jis_valid_page)
+from mod_charset import c_psbios_sj_mapper, is_ascii
 
-def dec_shift_jis(byt):
-    assert len(byt) == 2
-    try:
-        s = byt.decode('shift-jis')
-    except:
-        s = 'decode error'
-    v = list(byt)
-    #v = v[0] * 0x100 + v[1]
-    return s, v
+shift_jis_mapper = c_psbios_sj_mapper()
 
 def valid_shift_jis_val(v):
-    for itm in shift_jis_valid_page:
-        if v[0] == itm[0] and itm[1] <= v[1] < itm[2]:
-            return True
-    return False
+    return not (shift_jis_mapper.map(*v) is None)
 
-def invalid_spec_text(s):
-    if len(s) != 4:
+def valid_ctr_sym_val(v):
+    return v.isdigit() or v == b'@'
+
+def invalid_spec_text(s, p):
+    if len(s) - p != 4:
         return False
-    ss0 = s[0] * 0x100 + s[1]
-    ss1 = s[2] * 0x100 + s[3]
-    if ((s[0] < 0x88 and s[2] >= 0x88) or
+    ss0 = s[p] * 0x100 + s[p + 1]
+    ss1 = s[p + 2] * 0x100 + s[p + 3]
+    if ((s[p] < 0x88 and s[p + 2] >= 0x88) or
         (ss0 < 0x829f and ss1 < 0x829f) or
         0x839f <= ss0 < 0x889f or
         0x839f <= ss1 < 0x889f or
-        ss0 == ss1 > 0x889f
+        ss0 == ss1 >= 0x889f or
+        0x839f <= ss0 < 0x849f or
+        0x839f <= ss1 < 0x849f
         ):
         return True
+    return False
 
-def invalid_spec_text_trimed(s):
-    if len(s) != 4:
+def invalid_spec_text_trimed(s, p):
+    if len(s) - p != 4:
         return False
-    if ((s[0] < 0x88 and s[2] < 0x88) or
-        (s[0] >= 0x88 and s[2] >= 0x88)
+    ss0 = s[p] * 0x100 + s[p + 1]
+    ss1 = s[p + 2] * 0x100 + s[p + 3]
+    if ((s[p] < 0x88 and s[p + 2] < 0x88) or
+        (s[p] >= 0x88 and s[p + 2] >= 0x88) or
+        (ss0 < 0x889f and ss1 >= 0x889f)
         ):
         return True
+    return False
 
-def trim_invalid_head(s):
-    for i in range(len(s)):
-        if 0x81 <= s[i] < 0x85 or 0x88 <= s[i] < 0x99:
+invalid_spec_list = set([
+    '荒Ｒ',
+    '煮苗44',
+    '神弛3',
+])
+
+def get_valid_char(s, p):
+    l = len(s)
+    if p >= l:
+        return None, 0
+    c = s[p:p+1]
+    #if is_ascii(c[0]):
+    if valid_ctr_sym_val(c):
+        return c, 1
+    if p > l - 2:
+        return None, 1
+    c = s[p:p+2]
+    if valid_shift_jis_val(c):
+        return c, 2
+    return None, 1
+
+def trim_invalid_head(s, p):
+    i = p
+    while i < len(s):
+        c, step = get_valid_char(s, i)
+        if not c is None:
             return i
+        i += step
     return None
 
-def valid_shift_jis_text(s):
-    #print('check', len(s))
-    last_at = False
-    if s[-1] == 0x40: #b'@'
-        s = s[:-1]
-        last_at = True
-    thp = trim_invalid_head(s)
+def _step_should_shift(s, p):
+    if len(s) - p < 3:
+        return False
+    c, step = get_valid_char(s, p)
+    if step != 2:
+        return False
+    c, step = get_valid_char(s, p + 1)
+    if step != 2:
+        return False
+    return True
+
+def _valid_shift_jis_text(s, p):
+    thp = trim_invalid_head(s, p)
     if thp is None:
         return None, None
-    elif thp > 0:
-        s = s[thp:]
-        if invalid_spec_text_trimed(s):
-            return None, None
-    if len(s) % 2 or len(s) < 4:
-        return None, None
-    if invalid_spec_text(s):
-        return None, None
+    i = thp
     rs = ''
-    for i in range(0, len(s), 2):
-        c = s[i:i+2]
-        rc, rv = dec_shift_jis(c)
-        if not valid_shift_jis_val(rv):
-            return None, None
-        rs = rs + rc
-    if last_at:
-        rs += '@'
-    #if invalid_spec_text(s):
-    #    print('exclude', rs)
+    sjc = 0
+    if _step_should_shift(s, thp):
+        nxt = thp + 1
+    else:
+        nxt = None
+    gnxt = lambda v: v if nxt is None else nxt
+    while i < len(s):
+        c, step = get_valid_char(s, i)
+        if c is None:
+            return None, gnxt(i)
+        try:
+            rc = c.decode('shift-jis')
+        except:
+            return None, gnxt(i)
+        i += step
+        rs += rc
+        if step == 2:
+            sjc += 1
+    if sjc < 2:
+        return None, nxt
+    if invalid_spec_text(s, thp):
+        return None, nxt
+    if thp > 0:
+        if invalid_spec_text_trimed(s, thp):
+            return None, nxt
+    if rs in invalid_spec_list:
+        return None, nxt
+    return rs, thp
+
+def valid_shift_jis_text(s):
+    rs = None
+    thp = 0
+    while rs is None and not thp is None:
+        rs, thp = _valid_shift_jis_text(s, thp)
+    assert rs != '博ъ'
     return rs, thp
 
 EOS = 0 #b'\00'
@@ -107,7 +130,7 @@ class c_text_finder:
                  checker = valid_shift_jis_text):
         self.raw = raw
         self.pos = offset
-        self.checker = valid_shift_jis_text
+        self.checker = checker
         self.text_list = []
 
     def goto_next_string(self):

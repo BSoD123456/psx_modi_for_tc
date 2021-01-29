@@ -56,19 +56,21 @@ class c_psbios_sj_mapper(c_charset_mapper):
         (0x8461, 0x8470),
         (0x8492, 0x849f),
         (0x84bf, 0x889f),
+        (0x9873, None),
     ]
 
     def __init__(self):
         super().__init__()
         self.pb_sj_hole = [
             tuple(
-                self._map_nohole(v >> 8, v & 0xff) for v in vs
+                self._map_nohole(v >> 8, v & 0xff) if v else 0x9900
+                for v in vs
             ) for vs in self.pb_sj_hole
         ]
 
     @staticmethod
     def _map_nohole(hc, lc):
-        if hc < 0x81 or not 0x40 <= lc < 0xfd or lc == 0x7f:
+        if hc < 0x81 or hc > 0x98 or not 0x40 <= lc < 0xfd or lc == 0x7f:
             return None
         r = (hc - 0x81) * 0xbc + (lc - 0x40)
         if lc > 0x7f:
@@ -102,6 +104,9 @@ class c_psbios_sj_mapper(c_charset_mapper):
             if idx >= st:
                 idx += ed - st
         return self._unmap_nohole(idx)
+
+def is_ascii(c):
+    return 0x20 <= c < 0x7f
 
 class c_charset:
 

@@ -9,7 +9,7 @@ def valid_shift_jis_val(v):
     return not (shift_jis_mapper.map(*v) is None)
 
 def valid_ctr_sym_val(v):
-    return v.isdigit() or v == b'@'
+    return v.isdigit() or v == b'@' or v == b' '
 
 def valid_ctr_sym_in_string(s):
     for c in s:
@@ -46,10 +46,17 @@ def invalid_spec_text_trimed(s, p):
         return True
     return False
 
+def invalid_spec_text_spaced(rs):
+    if len(rs) == 3 and rs[1:] == ' レ':
+        return True
+    return False
+
 invalid_spec_list = set([
     '荒Ｒ',
     '煮苗44',
     '神弛3',
+    '斜磁40',
+    '式隠4 ',
 ])
 
 def get_valid_char(s, p):
@@ -118,6 +125,9 @@ def _valid_shift_jis_text(s, p):
     if thp > 0:
         if invalid_spec_text_trimed(s, thp):
             return None, nxt
+    if ' 'in rs:
+        if invalid_spec_text_spaced(rs):
+            return None, nxt
     if rs in invalid_spec_list:
         return None, nxt
     return rs, thp
@@ -127,7 +137,6 @@ def valid_shift_jis_text(s):
     thp = 0
     while rs is None and not thp is None:
         rs, thp = _valid_shift_jis_text(s, thp)
-    assert rs != '博ъ'
     return rs, thp
 
 EOS = 0 #b'\00'

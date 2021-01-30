@@ -11,7 +11,7 @@ from mod_charset import std_filler
 
 class c_text_tab:
 
-    VERSION = 1.0
+    VERSION = 1.01
 
     def __init__(self, srcs):
         self.texts = []
@@ -112,8 +112,8 @@ class c_text_tab:
 
     def update_old_texts(self, old_texts):
         print('update old texts to version', str(self.VERSION))
-        if (isinstance(self.texts, dict) and            
-            'texts' in self.texts):
+        if (isinstance(old_texts, dict) and            
+            'texts' in old_texts):
             old_texts = old_texts['texts']
         now_texts = self.texts
         merge_texts = []
@@ -166,8 +166,12 @@ class c_text_tab:
                         m_itms.append(n_ti)
                         n_t_idx += 1
                     elif n_ofs > o_ofs:
-                        o_ti['trans'] = '*no longer exist*' + o_ti['trans']
-                        o_itms.append(o_ti)
+                        trans = o_ti['trans']
+                        if trans:
+                            o_ti['trans'] = (
+                                '*need delete(no longer exist)*'
+                                + trans)
+                            m_itms.append(o_ti)
                         o_t_idx += 1
                 merge_texts.append((tag, m_itms))
             else:

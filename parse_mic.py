@@ -121,7 +121,7 @@ class c_mic_file:
                 fname = '__eof__'
             else:
                 fname = dat['name'].value.decode().strip('\0')
-            f_addr = gpos + dat['offset'].value * self.sect_size
+            f_addr = gpos + dat['offset'].value
             fdesc = {
                 'offset': f_addr,
             }

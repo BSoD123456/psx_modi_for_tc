@@ -34,6 +34,7 @@ class c_mic_file:
         self.sectab_pos = sectab_offs
         self.body_pos = math.inf
         self.scan_done = False
+        self.curdir = []
 
     def get_pack(self, desc, noshift = False):
         if self.pos >= len(self.raw):
@@ -141,6 +142,135 @@ class c_mic_file:
             self.scan_group(gid)
         self.scan_done = True
 
+    def relpath(self, path):
+        ps = path.split('/')
+        if len(ps) > 1 and not ps[0]:
+            rcd = []
+        else:
+            rcd = self.curdir.copy()
+        for p in ps:
+            if not p or p == '.':
+                continue
+            elif p == '..':
+                if rcd:
+                    rcd.pop()
+                continue
+            rcd.append(p)
+        return rcd
+
+    def getcwd(self):
+        return '/' + '/'.join(self.curdir)
+
+    @staticmethod
+    def showitems(itms, max_width = 60, tab_width = 6):
+        rs = []
+        line = ''
+        for itm in itms:
+            nline = line
+            if nline:
+                nline += '\t'
+            nline += itm
+            nline = nline.expandtabs(tab_width)
+            if len(nline) > max_width:
+                rs.append(line)
+                line = itm
+            else:
+                line = nline
+        if line:
+            rs.append(line)
+        return '\n'.join(rs)
+
+    @staticmethod
+    def gid2name(gid):
+        return 'G{:03X}'.format(gid)
+
+    @staticmethod
+    def gname2id(gn):
+        return int(gn[1:], 16) if gn[0] == 'G' else -1
+
+    def getfiles(self, gname):
+        gid = self.gname2id(gname)
+        if not gid in self.groups or not 'files' in self.groups[gid]:
+            print('group not exist:', gname)
+            return None
+        return self.groups[gid]['files']
+
+    def ls(self, path = '.'):
+        ddir = self.relpath(path)
+        if len(ddir) == 0:
+            itms = [self.gid2name(k) for k in self.groups.keys()]
+            print(self.showitems(itms))
+            return
+        gfiles = self.getfiles(ddir[0])
+        if not gfiles:
+            return
+        if len(ddir) == 1:
+            itms = gfiles.keys()
+            print(self.showitems(itms))
+            return
+        print('invalid path:', path)
+
+    def pwd(self):
+        print(self.getcwd())
+
+    def cd(self, path):
+        ddir = self.relpath(path)
+        if len(ddir) > 1:
+            print('invalid path:', path)
+            return
+        elif len(ddir) == 1:
+            if not self.getfiles(ddir[0]):
+                return
+        self.curdir = ddir
+        self.pwd()
+
+    def unpack_file(self, sav_path, ddir, silence = False):
+        if len(ddir) != 2:
+            print('invalid path:', ddir)
+        gname, fname = ddir
+        if not os.path.exists(sav_path):
+            os.mkdir(sav_path)
+        dir_path = os.path.join(sav_path, gname)
+        if not os.path.exists(dir_path):
+            os.mkdir(dir_path)
+        file_name = os.path.join(dir_path, fname)
+        gfiles = self.getfiles(gname)
+        if not gfiles:
+            return
+        if not fname in gfiles:
+            print('file not exist: {}/{}'.format(gname, fname))
+            return
+        fdesc = gfiles[fname]
+        with open(file_name, 'wb') as fd:
+            fd.write(
+                self.raw[fdesc['offset'] : fdesc['offset'] + fdesc['size']])
+        if not silence:
+            print('unpack: {}/{} to {}'.format(gname, fname, file_name))
+
+    def _unpack(self, sav_path, ddir, silence = 2):
+        if len(ddir) > 2:
+            print('invalid path:', ddir)
+        elif len(ddir) > 1:
+            self.unpack_file(sav_path, ddir, silence < 2)
+        elif len(ddir) > 0:
+            gfiles = self.getfiles(ddir[0])
+            if not gfiles:
+                return
+            if silence > 0:
+                print('unpack group:', ddir[0])
+            for fn in gfiles.keys():
+                if fn == '__eof__':
+                    continue
+                self._unpack(sav_path, ddir + [fn], silence)
+        else:
+            for gid in self.groups.keys():
+                gn = self.gid2name(gid)
+                self._unpack(sav_path, ddir + [gn], silence)
+
+    def unpack(self, sav_path, path = '.', silence = 2):
+        ddir = self.relpath(path)
+        self._unpack(sav_path, ddir, silence)
+
 def tst_find_kw(raw, kw = b'PROG.BIN'):
     pos = 0
     rs = []
@@ -170,5 +300,8 @@ if __name__ == '__main__':
     bar = dltrs(foo)
     foobar = [(hex(a), hex(int(b/0x800))) for a, b in zip(foo[:-1], bar[1:])]
 
+    ext_path = r'G:\emu\ps\jpsxdec_v1-00_rev3921\extable\l3t1e1'
     mf = c_mic_file(raw)
-    
+    def upk():
+        mf.scan()
+        mf.unpack(ext_path, silence = 1)

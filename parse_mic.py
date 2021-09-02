@@ -224,16 +224,10 @@ class c_mic_file:
         self.curdir = ddir
         self.pwd()
 
-    def unpack_file(self, sav_path, ddir, silence = False):
+    def foreach_file(self, hndl, ddir):
         if len(ddir) != 2:
             print('invalid path:', ddir)
         gname, fname = ddir
-        if not os.path.exists(sav_path):
-            os.mkdir(sav_path)
-        dir_path = os.path.join(sav_path, gname)
-        if not os.path.exists(dir_path):
-            os.mkdir(dir_path)
-        file_name = os.path.join(dir_path, fname)
         gfiles = self.getfiles(gname)
         if not gfiles:
             return
@@ -241,35 +235,36 @@ class c_mic_file:
             print('file not exist: {}/{}'.format(gname, fname))
             return
         fdesc = gfiles[fname]
-        with open(file_name, 'wb') as fd:
-            fd.write(
-                self.raw[fdesc['offset'] : fdesc['offset'] + fdesc['size']])
-        if not silence:
-            print('unpack: {}/{} to {}'.format(gname, fname, file_name))
+        rraw = self.raw[fdesc['offset'] : fdesc['offset'] + fdesc['size']]
+        return hndl(rraw, fdesc, gname, fname)
 
-    def _unpack(self, sav_path, ddir, silence = 2):
+    def _foreach(self, hndl, ddir = [], silence = 2):
         if len(ddir) > 2:
             print('invalid path:', ddir)
         elif len(ddir) > 1:
-            self.unpack_file(sav_path, ddir, silence < 2)
+            rs = self.foreach_file(hndl, ddir)
+            if rs == '':
+                rs = 'for file: {0[0]}/{0[1]}'.format(ddir)
+            if rs and silence > 1:
+                print(rs)
         elif len(ddir) > 0:
             gfiles = self.getfiles(ddir[0])
             if not gfiles:
                 return
             if silence > 0:
-                print('unpack group:', ddir[0])
+                print('for group:', ddir[0])
             for fn in gfiles.keys():
                 if fn == '__eof__':
                     continue
-                self._unpack(sav_path, ddir + [fn], silence)
+                self._foreach(hndl, ddir + [fn], silence)
         else:
             for gid in self.groups.keys():
                 gn = self.gid2name(gid)
-                self._unpack(sav_path, ddir + [gn], silence)
+                self._foreach(hndl, ddir + [gn], silence)
 
-    def unpack(self, sav_path, path = '.', silence = 2):
+    def foreach(self, hndl, path = '.', silence = 2):
         ddir = self.relpath(path)
-        self._unpack(sav_path, ddir, silence)
+        self._foreach(hndl, ddir, silence)
 
 def tst_find_kw(raw, kw = b'PROG.BIN'):
     pos = 0
@@ -282,6 +277,31 @@ def tst_find_kw(raw, kw = b'PROG.BIN'):
         rs.append(rpos)
     rs.append(len(raw))
     return rs
+
+from find_sj_text import c_text_finder
+
+def find_text_in_raw(raw, fdesc, gname, fname):
+    finder = c_text_finder(raw)
+    finder.scan()
+    if len(finder.text_list) > 5:
+        return ''
+    else:
+        return None
+
+def unpack_hndl(sav_path):
+    def save_file(raw, fdesc, gname, fname):
+        if find_text_in_raw(raw, fdesc, gname, fname) is None:
+            return None
+        if not os.path.exists(sav_path):
+            os.mkdir(sav_path)
+        dir_path = os.path.join(sav_path, gname)
+        if not os.path.exists(dir_path):
+            os.mkdir(dir_path)
+        file_name = os.path.join(dir_path, fname)
+        with open(file_name, 'wb') as fd:
+            fd.write(raw)
+        return 'unpack: {}/{} to {}'.format(gname, fname, file_name)
+    return save_file
 
 if __name__ == '__main__':
     
@@ -304,4 +324,4 @@ if __name__ == '__main__':
     mf = c_mic_file(raw)
     def upk():
         mf.scan()
-        mf.unpack(ext_path, silence = 1)
+        mf.foreach(unpack_hndl(ext_path))

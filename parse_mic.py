@@ -224,7 +224,7 @@ class c_mic_file:
         self.curdir = ddir
         self.pwd()
 
-    def foreach_file(self, hndl, ddir):
+    def getfile(self, ddir):
         if len(ddir) != 2:
             print('invalid path:', ddir)
         gname, fname = ddir
@@ -236,7 +236,16 @@ class c_mic_file:
             return
         fdesc = gfiles[fname]
         rraw = self.raw[fdesc['offset'] : fdesc['offset'] + fdesc['size']]
-        return hndl(rraw, fdesc, gname, fname)
+        return rraw, fdesc
+
+    def cat(self, path):
+        ddir = self.relpath(path)
+        rraw, fdesc = self.getfile(ddir)
+        return sp.data_pack(sp.desc_buf(len(rraw)), rraw)
+
+    def foreach_file(self, hndl, ddir):
+        rraw, fdesc = self.getfile(ddir)
+        return hndl(rraw, fdesc, *ddir)
 
     def _foreach(self, hndl, ddir = [], silence = 2):
         if len(ddir) > 2:
@@ -266,6 +275,152 @@ class c_mic_file:
         ddir = self.relpath(path)
         self._foreach(hndl, ddir, silence)
 
+prog_header = sp.desc_pack(
+    ('headlen', sp.desc_uword),
+    ('tablen', sp.desc_uword),
+    ('codelen', sp.desc_uint),
+)
+
+class c_prog_file:
+
+    def __init__(self, raw):
+        self.raw = raw
+        self.pos = 0
+        self.scan_done = False
+
+    def get_pack(self, desc, noshift = False):
+        if self.pos >= len(self.raw):
+            return None
+        spos = self.pos
+        dpos = spos + len(desc)
+        if not noshift:
+            self.pos = dpos
+        return sp.data_pack(desc,
+                            self.raw[spos:dpos])
+
+    def scan(self):
+        if self.scan_done:
+            return True
+        if not self.scan_header():
+            return False
+        if not self.scan_str():
+            return False
+        self.scan_done = True
+        return True
+
+    def scan_header(self):
+        if self.pos > 0:
+            return False
+        dat = self.get_pack(prog_header)
+        if dat['headlen'].value != 8:
+            print('invalid prog header length:', dat['headlen'].value)
+            return False
+        self.strtab_pos = dat['tablen'].value
+        self.data_pos = dat['codelen'].value
+        segs = self.scan_tab(
+            dat['tablen'].value - dat['headlen'].value, self.data_pos)
+        if not segs:
+            return False
+        self.segs = segs
+        strsegs = self.scan_tab(
+            self.segs[0]['offset'] - self.strtab_pos, len(self.raw))
+        if not strsegs:
+            return False
+        self.strsegs = strsegs
+        for segdesc in self.segs:
+            if not self.scan_seg(segdesc):
+                return False
+        return True
+
+    def scan_str(self):
+        if not self.strsegs:
+            return True
+        self.pos = self.strsegs[0]['offset']
+        for strdesc in self.strsegs:
+            if strdesc['size'] == 0:
+                continue
+            if not self.scan_dat(strdesc):
+                return False
+        return True
+
+    def scan_tab(self, tablen, nxt_pos, offset = 0):
+        if tablen % 2 or tablen == 0:
+            print('invalid prog header tab length:', tablen)
+            return None
+        tabdesc = sp.desc_arr(int(tablen / 2), sp.desc_uword)
+        dat = self.get_pack(tabdesc)
+        segs = []
+        last_seg = None
+        for e in dat:
+            ent = e.value + offset
+            seg = {
+                'offset': ent
+            }
+            if last_seg:
+                last_seg['size'] = ent - last_seg['offset']
+            last_seg = seg
+            segs.append(seg)
+        if not last_seg:
+            print('prog should have at least 1 seg')
+            return None
+        last_seg['size'] = nxt_pos - last_seg['offset']
+        return segs
+
+    def scan_seg(self, segdesc):
+        if self.pos != segdesc['offset']:
+            print('invalid seg offset: 0x{:x}/0x{:x}'.format(
+                self.pos, segdesc['offset']))
+            return False
+        dat = self.get_pack(sp.desc_buf(segdesc['size']))
+        for i in range(0, len(dat), 2):
+            if dat[i:i+2].value == b'\xff\xff':
+                tablen = i
+                break
+        else:
+            print('missing seg spliter')
+            return False
+        if tablen == 0:
+            if len(dat) != 2:
+                print('invalid seg head:', segdesc)
+                return False
+            else:
+                return True
+        self.pos = segdesc['offset']
+        codesegs = self.scan_tab(
+            tablen, segdesc['offset'] + segdesc['size'],
+            offset = segdesc['offset'])
+        if not codesegs:
+            return False
+        self.pos += 2
+        if codesegs[0]['offset'] != self.pos:
+            print('invalid 1st code: 0x{:x}/0x{:x}'.format(
+                self.pos, codesegs[0]['offset']))
+        segdesc['codes'] = codesegs
+        for codedesc in codesegs:
+            if not self.scan_dat(codedesc):
+                return False
+        return True
+
+    def scan_dat(self, desc):
+        if self.pos != desc['offset']:
+            print('invalid dat offset: 0x{:x}/0x{:x}'.format(
+                self.pos, desc['offset']))
+            return False
+        dat = self.get_pack(sp.desc_buf(desc['size']))
+        desc['data'] = dat.buffer()
+        return True
+
+    def show_str(self, enc = 'shift-jis'):
+        for strdesc in self.strsegs:
+            print('text seg 0x{:x}'.format(strdesc['offset']))
+            if strdesc['size'] == 0:
+                continue
+            print('length:', strdesc['size'])
+            ppr(strdesc['data'].decode(enc, errors = 'ignore'))
+
+    def show(self):
+        self.show_str()
+
 def tst_find_kw(raw, kw = b'PROG.BIN'):
     pos = 0
     rs = []
@@ -288,9 +443,9 @@ def find_text_in_raw(raw, fdesc, gname, fname):
     else:
         return None
 
-def unpack_hndl(sav_path):
+def unpack_hndl(sav_path, force = False):
     def save_file(raw, fdesc, gname, fname):
-        if find_text_in_raw(raw, fdesc, gname, fname) is None:
+        if not force and find_text_in_raw(raw, fdesc, gname, fname) is None:
             return None
         if not os.path.exists(sav_path):
             os.mkdir(sav_path)
@@ -302,6 +457,20 @@ def unpack_hndl(sav_path):
             fd.write(raw)
         return 'unpack: {}/{} to {}'.format(gname, fname, file_name)
     return save_file
+
+def cutstring(buf, enc = 'shift-jis', eos = b'\0', maxlen = 200):
+    rlen = buf.find(eos)
+    if rlen < 0:
+        rlen = math.inf
+    rlen = min(rlen, len(buf), maxlen)
+    return buf[:rlen].decode(enc, errors = 'ignore')
+
+def cutdat(dat, paddr, **kargs):
+    addr = sp.data_pack(sp.desc_uword, dat[paddr:paddr+2]).value
+    return cutstring(dat[addr:].value, **kargs)
+
+def ptxt(dat, st, ed):
+    ppr([(hex(i), cutdat(dat, i)) for i in range(st, ed, 2)])
 
 if __name__ == '__main__':
     
@@ -322,6 +491,19 @@ if __name__ == '__main__':
 
     ext_path = r'G:\emu\ps\jpsxdec_v1-00_rev3921\extable\l3t1e1'
     mf = c_mic_file(raw)
+    
     def upk():
         mf.scan()
         mf.foreach(unpack_hndl(ext_path))
+        
+    def gfile(gid):
+        mf.scan()
+        gn = mf.gid2name(gid) + '/PROG.BIN'
+        return mf.cat(gn)
+
+    def sprog(gid):
+        gf = gfile(gid)
+        pf = c_prog_file(gf)
+        pf.scan()
+        pf.show()
+        return pf

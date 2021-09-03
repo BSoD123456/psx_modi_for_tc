@@ -399,6 +399,9 @@ class c_prog_file:
         for codedesc in codesegs:
             if not self.scan_dat(codedesc):
                 return False
+            if codedesc['size'] % 3 != 1 or codedesc['data'][-1] != 0:
+                print('invalid code seg:', codedesc['offset'])
+                return False
         return True
 
     def scan_dat(self, desc):
@@ -409,6 +412,16 @@ class c_prog_file:
         dat = self.get_pack(sp.desc_buf(desc['size']))
         desc['data'] = dat
         return True
+
+    def show_codebuf(self, buf):
+        desc = sp.desc_pack(
+            ('cmd', sp.desc_ubyte),
+            ('val', sp.desc_uword),
+        )
+        for i in range(0, len(buf) - 1, 3):
+            dat = sp.data_pack(desc, buf[i:i+3])
+            print('- 0x{:02x} : 0x{:04x}'.format(
+                dat['cmd'].value, dat['val'].value))
 
     def show_code(self):
         for segdesc in self.segs:
@@ -421,16 +434,38 @@ class c_prog_file:
                 print('-----')
                 print('code 0x{:x}(0x{:x}):'.format(
                     codedesc['offset'], codedesc['size']))
-                ppr(codedesc['data'].show())
+                #ppr(codedesc['data'].show())
+                self.show_codebuf(codedesc['data'])
+
+    def show_strbuf(self, buf, enc, offset = 0):
+        blen = len(buf)
+        st = 0
+        ed = 0
+        cnt = 0
+        while True:
+            if ed >= blen or buf[ed] == 0:
+                if ed - st > 0:
+                    print('0x{:x}(0x{:x}(0x{:x}):0x{:x}): '.format(
+                        cnt, st + offset, st, ed-st), end='')
+                    ppr(buf[st:ed].decode(enc, errors = 'ignore'))
+                    cnt += 1
+                if ed > blen:
+                    break
+                st = ed + 1
+            ed += 1
 
     def show_str(self, enc = 'shift-jis'):
+        cnt = 0
         for strdesc in self.strsegs:
             print('=====')
-            print('text seg 0x{:x}'.format(strdesc['offset']))
+            print('text seg 0x{:x}(0x{:x}): 0x{:x}'.format(
+                cnt, cnt * 2 + self.strtab_pos, strdesc['offset']))
+            cnt += 1
             if strdesc['size'] == 0:
                 continue
             print('length:', strdesc['size'])
-            ppr(strdesc['data'].buffer().decode(enc, errors = 'ignore'))
+            buf = strdesc['data'].buffer()
+            self.show_strbuf(buf, enc, strdesc['offset'])
 
     def show(self):
         print('=== code ===')

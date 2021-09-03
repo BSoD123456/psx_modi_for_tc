@@ -407,18 +407,35 @@ class c_prog_file:
                 self.pos, desc['offset']))
             return False
         dat = self.get_pack(sp.desc_buf(desc['size']))
-        desc['data'] = dat.buffer()
+        desc['data'] = dat
         return True
+
+    def show_code(self):
+        for segdesc in self.segs:
+            print('=====')
+            print('seg 0x{:x}'.format(segdesc['offset']))
+            print('length: 0x{:x}'.format(segdesc['size']))
+            if not 'codes' in segdesc:
+                continue
+            for codedesc in segdesc['codes']:
+                print('-----')
+                print('code 0x{:x}(0x{:x}):'.format(
+                    codedesc['offset'], codedesc['size']))
+                ppr(codedesc['data'].show())
 
     def show_str(self, enc = 'shift-jis'):
         for strdesc in self.strsegs:
+            print('=====')
             print('text seg 0x{:x}'.format(strdesc['offset']))
             if strdesc['size'] == 0:
                 continue
             print('length:', strdesc['size'])
-            ppr(strdesc['data'].decode(enc, errors = 'ignore'))
+            ppr(strdesc['data'].buffer().decode(enc, errors = 'ignore'))
 
     def show(self):
+        print('=== code ===')
+        self.show_code()
+        print('=== text ===')
         self.show_str()
 
 def tst_find_kw(raw, kw = b'PROG.BIN'):

@@ -298,10 +298,30 @@ class c_prog_file:
         return sp.data_pack(desc,
                             self.raw[spos:dpos])
 
+    @staticmethod
+    def cutbuf(buf, splt_char = 0, has_empty = False):
+        blen = len(buf)
+        st = 0
+        ed = 0
+        rs = []
+        while True:
+            if ed >= blen or buf[ed] == splt_char:
+                if has_empty or ed - st > 0:
+                    rs.append((st, ed))
+                if ed > blen:
+                    break
+                st = ed + 1
+            ed += 1
+        return rs
+
     def scan(self):
         if self.scan_done:
             return True
         if not self.scan_header():
+            return False
+        if not self.scan_ukdata():
+            return False
+        if not self.scan_res():
             return False
         if not self.scan_str():
             return False
@@ -327,9 +347,44 @@ class c_prog_file:
         if not strsegs:
             return False
         self.strsegs = strsegs
+        self.str_pos = strsegs[0]['offset']
+        self.res_pos = None
         for segdesc in self.segs:
             if not self.scan_seg(segdesc):
                 return False
+        return True
+
+    def scan_ukdata(self):
+        if self.pos != self.data_pos:
+            print('invalid ukdata offset')
+            return False
+        self.ukdata = self.get_pack(sp.desc_buf(self.res_pos - self.data_pos))
+        return True
+
+    def scan_res(self):
+        if self.pos != self.res_pos:
+            print('invalid res offset')
+            return False
+        dat = self.get_pack(sp.desc_buf(self.str_pos - self.res_pos))
+        spbuf = self.cutbuf(dat, 0xa0, True)
+        res = []
+        self.pos = self.res_pos
+        for st, ed in spbuf:
+            offset = st + self.res_pos
+            size = ed - st
+            rdesc = {
+                'offset': offset,
+                'size': size,
+            }
+            if size > 0:
+                if self.pos != offset:
+                    print('invalid res seg')
+                    return False
+                dat = self.get_pack(sp.desc_buf(size))
+                rdesc['data'] = dat
+            res.append(rdesc)
+            self.pos += 1
+        self.res = res
         return True
 
     def scan_str(self):
@@ -399,8 +454,7 @@ class c_prog_file:
         for codedesc in codesegs:
             if not self.scan_dat(codedesc):
                 return False
-            if codedesc['size'] % 3 != 1 or codedesc['data'][-1] != 0:
-                print('invalid code seg:', codedesc['offset'])
+            if not self.scan_codebuf(codedesc):
                 return False
         return True
 
@@ -413,15 +467,34 @@ class c_prog_file:
         desc['data'] = dat
         return True
 
-    def show_codebuf(self, buf):
-        desc = sp.desc_pack(
-            ('cmd', sp.desc_ubyte),
-            ('val', sp.desc_uword),
-        )
+    codecmd_desc = sp.desc_pack(
+        ('op', sp.desc_ubyte),
+        ('val', sp.desc_uword),
+    )
+
+    def scan_codebuf(self, codedesc):
+        if codedesc['size'] % 3 != 1 or codedesc['data'][-1] != 0:
+            print('invalid code seg:', codedesc['offset'])
+            return False
+        if codedesc['size'] == 1:
+            return True
+        buf = codedesc['data']
+        cmds = []
         for i in range(0, len(buf) - 1, 3):
-            dat = sp.data_pack(desc, buf[i:i+3])
+            cmd = sp.data_pack(
+                self.codecmd_desc, buf[i:i+3])
+            cmds.append(cmd)
+            if self.res_pos is None:
+                self.res_pos = cmd['val'].value
+        codedesc['cmds'] = cmds
+        return True
+
+    def show_codebuf(self, codedesc):
+        if not 'cmds' in codedesc:
+            return
+        for dat in codedesc['cmds']:
             print('- 0x{:02x} : 0x{:04x}'.format(
-                dat['cmd'].value, dat['val'].value))
+                dat['op'].value, dat['val'].value))
 
     def show_code(self):
         for segdesc in self.segs:
@@ -435,24 +508,25 @@ class c_prog_file:
                 print('code 0x{:x}(0x{:x}):'.format(
                     codedesc['offset'], codedesc['size']))
                 #ppr(codedesc['data'].show())
-                self.show_codebuf(codedesc['data'])
+                self.show_codebuf(codedesc)
+
+    def show_res(self):
+        for i, resdesc in enumerate(self.res):
+            print('0x{:x}(0x{:x}(0x{:x}):0x{:x}): '.format(
+                i, resdesc['offset'],
+                resdesc['offset'] - self.res_pos,
+                resdesc['size']))
+            if 'data' in resdesc:
+                ppr(resdesc['data'].show())
+            else:
+                print('-')
 
     def show_strbuf(self, buf, enc, offset = 0):
-        blen = len(buf)
-        st = 0
-        ed = 0
-        cnt = 0
-        while True:
-            if ed >= blen or buf[ed] == 0:
-                if ed - st > 0:
-                    print('0x{:x}(0x{:x}(0x{:x}):0x{:x}): '.format(
-                        cnt, st + offset, st, ed-st), end='')
-                    ppr(buf[st:ed].decode(enc, errors = 'ignore'))
-                    cnt += 1
-                if ed > blen:
-                    break
-                st = ed + 1
-            ed += 1
+        spbuf = self.cutbuf(buf, 0)
+        for i, (st, ed) in enumerate(spbuf):
+            print('0x{:x}(0x{:x}(0x{:x}):0x{:x}): '.format(
+                i, st + offset, st, ed-st), end='')
+            ppr(buf[st:ed].decode(enc, errors = 'ignore'))
 
     def show_str(self, enc = 'shift-jis'):
         cnt = 0
@@ -470,6 +544,8 @@ class c_prog_file:
     def show(self):
         print('=== code ===')
         self.show_code()
+        print('=== res ===')
+        self.show_res()
         print('=== text ===')
         self.show_str()
 
@@ -524,6 +600,33 @@ def cutdat(dat, paddr, **kargs):
 def ptxt(dat, st, ed):
     ppr([(hex(i), cutdat(dat, i)) for i in range(st, ed, 2)])
 
+def export_txt(mf, fn, enc = 'shift-jis'):
+    with open(fn, 'w', encoding = 'utf8') as wfd:
+        def writeline(s):
+            wfd.write(s + '\n')
+        def exprog(raw, fdesc, gname, fname):
+            if fname != 'PROG.BIN':
+                return
+            writeline('[file {:04x}]'.format(mf.gname2id(gname)))
+            pf = c_prog_file(raw)
+            try:
+                scan_done = pf.scan()
+            except:
+                scan_done = False
+            if not scan_done:
+                writeline('[!parse error!]')
+                return
+            for sidx, strdesc in enumerate(pf.strsegs):
+                writeline('[seg {:04x}]'.format(sidx))
+                if strdesc['size'] == 0:
+                    continue
+                buf = strdesc['data'].buffer()
+                spbuf = pf.cutbuf(buf, 0)
+                for tidx, (st, ed) in enumerate(spbuf):
+                    writeline('[txt {:04x}]'.format(tidx))
+                    writeline(buf[st:ed].decode(enc, errors = 'ignore'))
+        mf.foreach(exprog, silence = 1)
+
 if __name__ == '__main__':
     
     work_path = r'G:\emu\ps\jpsxdec_v1-00_rev3921\extable\l3t1\LINDA'
@@ -559,3 +662,7 @@ if __name__ == '__main__':
         pf.scan()
         pf.show()
         return pf
+
+    def exprog():
+        mf.scan()
+        export_txt(mf, os.path.join(ext_path, 'texts.txt'))

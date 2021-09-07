@@ -406,13 +406,18 @@ class c_prog_file:
         dat = self.get_pack(tabdesc)
         segs = []
         last_seg = None
+        seg_base = 0
         for e in dat:
-            ent = e.value + offset
+            ent = e.value + offset + seg_base
+            if last_seg:
+                while ent < last_seg['offset']:
+                    base_inc = 0x10000
+                    ent += base_inc
+                    seg_base += base_inc
+                last_seg['size'] = ent - last_seg['offset']
             seg = {
                 'offset': ent
             }
-            if last_seg:
-                last_seg['size'] = ent - last_seg['offset']
             last_seg = seg
             segs.append(seg)
         if not last_seg:
@@ -666,3 +671,17 @@ if __name__ == '__main__':
     def exprog():
         mf.scan()
         export_txt(mf, os.path.join(ext_path, 'texts.txt'))
+
+    def errlst():
+        mf.scan()
+        def t(raw, fdesc, gname, fname):
+            if fname != 'PROG.BIN':
+                return
+            pf = c_prog_file(raw)
+            try:
+                scan_done = pf.scan()
+            except:
+                scan_done = False
+            if not scan_done:
+                print('ERR:', gname)
+        mf.foreach(t, silence = 0)

@@ -302,12 +302,23 @@ class c_data:
     def show(self, *args, **kargs) :
         return self.desc.show(self.value, *args, **kargs)
 
-def data_pack(desc, raw):
-    if len(raw) != len(desc):
+def data_pack(desc, raw = None):
+    if raw is None:
+        raw = bytes(len(desc))
+    elif len(raw) != len(desc):
         raise ValueError('desc length not match: {}/{}'.format(
             len(raw), len(desc)))
     return desc.value(raw, 0, c_data)
 
+def data_update(dat, val):
+    if type(val) is dict:
+        for k in val:
+            data_update(dat[k], val[k])
+    elif type(val) is list:
+        for i, v in enumerate(val):
+            data_update(dat[i], v)
+    else:
+        dat.value = val
 def show(data, *args, **kargs):
     pprint(data.show(*args, **kargs))
 

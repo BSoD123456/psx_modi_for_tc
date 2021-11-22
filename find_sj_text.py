@@ -211,7 +211,13 @@ class c_text_finder:
             raise ValueError('missed @ symbol')
         slen = c_text_finder.count_bytes(src)
         dlen = c_text_finder.count_bytes(trans)
-        if not valid_ctr_sym_in_string(trans):
+        if txt_itm['info'][0] % 2 and src[0] == ' ':
+            if trans[0] != ' ':
+                raise ValueError('trans need to be pad by space')
+            trans_nopad = trans[1:]
+        else:
+            trans_nopad = trans
+        if not valid_ctr_sym_in_string(trans_nopad):
             raise ValueError('invalid symbol in trans')
         if slen + txt_itm['info'][2] - 1 < dlen:
             raise ValueError('trans too long')
